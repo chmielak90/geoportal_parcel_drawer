@@ -1,3 +1,4 @@
+# Copyright © 2024 Michal Chmielewski
 import os
 import sys
 from binascii import unhexlify
