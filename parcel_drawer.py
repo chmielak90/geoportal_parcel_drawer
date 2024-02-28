@@ -7,11 +7,11 @@ from ctypes import WinDLL
 
 import ezdxf
 import requests
-from PyQt5.QtCore import QRect, QSize, pyqtSignal, QObject
+from PyQt5.QtCore import QRect, QSize, pyqtSignal, QObject, Qt
 from PyQt5.QtGui import QColor, QPixmap, QIcon
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QFileDialog,
                              QRadioButton, QHBoxLayout, QComboBox, QStyledItemDelegate, QCheckBox, QMessageBox,
-                             QProgressBar)
+                             QProgressBar, QSpacerItem, QSizePolicy)
 from shapely.wkb import loads
 
 
@@ -264,6 +264,16 @@ class ParcelDrawerGUI(QWidget):
         self.ok_button = QPushButton('Ok', self)
         self.ok_button.clicked.connect(self.on_click)
         layout.addWidget(self.ok_button)
+
+        # Copyright Label
+        copyright_label = QLabel("Copyright © Michał Chmielewski")
+        copyright_label.setAlignment(Qt.AlignRight | Qt.AlignBottom)  # Align to bottom right
+
+        # Add a spacer to push the copyright label to the bottom right corner
+        spacer = QSpacerItem(10, 10, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        layout.addItem(spacer)
+
+        layout.addWidget(copyright_label)
 
         self.setLayout(layout)
         self.setWindowTitle('Parcel Drawer')
