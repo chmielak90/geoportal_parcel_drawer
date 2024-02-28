@@ -31,7 +31,7 @@ This application is designed to work with the ULDK API for processing parcel dat
 
 ------------------------------------------------------------------------------------------------------
 
-# Aplikacja Parcel Drawer
+# Aplikacja Parcel Drawer - Pobieranie Obrysu Działek z GeoPortal
 
 ## Przegląd
 Aplikacja Parcel Drawer to narzędzie oparte na PyQt5 do przetwarzania i wizualizacji danych działek. Pobiera dane działek za pomocą API ULDK i generuje pliki DXF z zarysami działek.
