@@ -193,9 +193,10 @@ class ParcelDrawerGUI(QWidget):
         self.filepath_label_text = "Wybierz lub wpisz ścieżkę do pliku:"
         self.drawing_option_label_text = "Wybierz opcję rysowania:"
         self.identifier_checkbox_label_text = "Chcesz dodać identyfikator działek?"
-        self.color_label_text = "Wybierz kolor warstwy:"
+        self.color_label_text = "Wybierz kolor warstwy dla obrysu działek:"
         self.ok_button_text = "Ok"
         self.file_dialog_title = "Wybierz plik DXF"
+        self.color_label_id_text = "Wybierz kolor warstwy dla identyfikatoró:"
 
         # Set the texts
         self.identifier_label.setText(self.identifier_label_text)
@@ -204,6 +205,7 @@ class ParcelDrawerGUI(QWidget):
         self.add_identifier_checkbox.setText(self.identifier_checkbox_label_text)
         self.color_label.setText(self.color_label_text)
         self.ok_button.setText(self.ok_button_text)
+        self.color_label_id.setText(self.color_label_id_text)
 
     def initUI(self):
         layout = QVBoxLayout()
@@ -239,16 +241,23 @@ class ParcelDrawerGUI(QWidget):
         layout.addWidget(self.drawing_option_label)
         layout.addLayout(radio_layout)
 
+        # Color Selection
+        self.color_label = QLabel("Select Drawing Layer Color:")
+        self.color_combo = ColorComboBox(self)
+        self.color_combo.currentIndexChanged.connect(self.on_color_combo_changed)  # Connect the change event
+        layout.addWidget(self.color_label)
+        layout.addWidget(self.color_combo)
+
         # Add a checkbox for adding an identifier
         self.add_identifier_checkbox = QCheckBox("Do you want to add an identifier?")
         layout.addWidget(self.add_identifier_checkbox)
 
         # Color Selection
-        self.color_label = QLabel("Select Layer Color:")
-        self.color_combo = ColorComboBox(self)
-        self.color_combo.currentIndexChanged.connect(self.on_color_combo_changed)  # Connect the change event
-        layout.addWidget(self.color_label)
-        layout.addWidget(self.color_combo)
+        self.color_label_id = QLabel("Select Identifier Layer Color:")
+        self.color_combo_id = ColorComboBox(self)
+        self.color_combo_id.currentIndexChanged.connect(self.on_color_combo_changed)  # Connect the change event
+        layout.addWidget(self.color_label_id)
+        layout.addWidget(self.color_combo_id)
 
         # OK Button
         self.ok_button = QPushButton('Ok', self)
@@ -304,6 +313,7 @@ class ParcelDrawerGUI(QWidget):
             return
 
         color = self.color_combo.currentText()
+        color_id = self.color_combo_id.currentText()
         is_polygon = self.polygon_radio.isChecked()
         add_identifier = self.add_identifier_checkbox.isChecked()
         list_of_identifiers = identifiers.split(',')
@@ -313,7 +323,7 @@ class ParcelDrawerGUI(QWidget):
         try:
             self.drawer = ParcelDrawer(list_of_identifiers, file_path, draw_as_lines=draw_as_lines,
                                   line_color=color_aci[color], polygon_color=color_aci[color],
-                                  identifier_color=color_aci[color], add_identifier_at_layer=add_identifier)
+                                  identifier_color=color_aci[color_id], add_identifier_at_layer=add_identifier)
             self.drawer.progress_updated.connect(self.update_progress_bar)
 
             self.drawer.read_or_create_dxf()
