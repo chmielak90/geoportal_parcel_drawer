@@ -6,10 +6,11 @@ from ctypes import WinDLL
 
 import ezdxf
 import requests
-from PyQt5.QtCore import QRect, QSize
+from PyQt5.QtCore import QRect, QSize, pyqtSignal, QObject
 from PyQt5.QtGui import QColor, QPixmap, QIcon
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QFileDialog,
-                             QRadioButton, QHBoxLayout, QComboBox, QStyledItemDelegate, QCheckBox, QMessageBox)
+                             QRadioButton, QHBoxLayout, QComboBox, QStyledItemDelegate, QCheckBox, QMessageBox,
+                             QProgressBar)
 from shapely.wkb import loads
 
 
@@ -20,9 +21,12 @@ class PathNotFoundError(Exception):
         super().__init__(f"{self.message}: '{self.path_error}'")
 
 
-class ParcelDrawer:
+class ParcelDrawer(QObject):
+    progress_updated = pyqtSignal(int)
+
     def __init__(self, identifiers, full_path, draw_as_lines=False, line_color=1, polygon_color=2,
                  identifier_color=3, add_identifier_at_layer=False):
+        super().__init__()
         self.identifiers = identifiers
         self.full_path = full_path
         self.draw_as_lines_flag = draw_as_lines  # Renamed attribute
@@ -83,12 +87,15 @@ class ParcelDrawer:
     def process_parcels(self):
         with ThreadPoolExecutor(max_workers=10) as executor:
             futures = [executor.submit(self.fetch_wkb_data, identifier) for identifier in self.identifiers]
-            for future in futures:
+            for i, future in enumerate(futures):
                 geometry, identifier = future.result()
                 if self.draw_as_lines_flag:
                     self.draw_lines(geometry, identifier)
                 else:
                     self.draw_as_polygon(geometry, identifier)
+
+                progress = (i + 1) / len(self.identifiers) * 100
+                self.progress_updated.emit(progress)
 
     def save_dxf(self):
         directory, filename = os.path.split(self.full_path)
@@ -201,6 +208,10 @@ class ParcelDrawerGUI(QWidget):
     def initUI(self):
         layout = QVBoxLayout()
 
+        # Progress bar
+        self.progress_bar = QProgressBar(self)
+        layout.addWidget(self.progress_bar)
+
         # Identifier Input
         self.identifier_label = QLabel("Enter Parcel Identifiers (comma-separated):")
         self.identifier_input = QLineEdit(self)
@@ -267,6 +278,9 @@ class ParcelDrawerGUI(QWidget):
                 self.color_combo.removeItem(i)
                 break  # Break after removing the duplicate to avoid skipping items
 
+    def update_progress_bar(self, value):
+        self.progress_bar.setValue(value)
+
     def on_click(self):
         draw_as_lines = False
         color_aci = {
@@ -297,11 +311,13 @@ class ParcelDrawerGUI(QWidget):
         if not is_polygon:
             draw_as_lines = True
         try:
-            drawer = ParcelDrawer(list_of_identifiers, file_path, draw_as_lines=draw_as_lines,
+            self.drawer = ParcelDrawer(list_of_identifiers, file_path, draw_as_lines=draw_as_lines,
                                   line_color=color_aci[color], polygon_color=color_aci[color],
                                   identifier_color=color_aci[color], add_identifier_at_layer=add_identifier)
-            drawer.read_or_create_dxf()
-            drawer.process_parcels()
+            self.drawer.progress_updated.connect(self.update_progress_bar)
+
+            self.drawer.read_or_create_dxf()
+            self.drawer.process_parcels()
 
         except ValueError as e:
             error_message = str(e)
@@ -314,7 +330,7 @@ class ParcelDrawerGUI(QWidget):
             return
 
         try:
-            drawer.save_dxf()
+            self.drawer.save_dxf()
         except PathNotFoundError as e:
             error_message = str(e)
             if self.language == "pl-PL":
