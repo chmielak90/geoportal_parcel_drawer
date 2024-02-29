@@ -177,8 +177,14 @@ class ParcelDrawerGUI(QWidget):
         self.initUI()
         # Check system locale and set messages
         # Check the keyboard layout or Windows display language
-        keyboard_layout = get_keyboard_layout()
-        windows_display_language = get_windows_display_language()[0]
+        try:
+            keyboard_layout = get_keyboard_layout()
+        except:
+            keyboard_layout = '0x409'
+        try:
+            windows_display_language = get_windows_display_language()[0]
+        except:
+            windows_display_language = 'en-US'
         self.language = "en-US"
         if keyboard_layout == '0x415' or windows_display_language.startswith('pl-PL'):
             self.set_polish_language()
