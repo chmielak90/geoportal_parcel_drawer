@@ -37,8 +37,14 @@ class ParcelDrawer(QObject):
         self.identifier_color = identifier_color
         self.add_identifier_at_layer = add_identifier_at_layer
         self.stop_requested = False
+        self.failed_identifiers = []
         self.doc = None
         self.msp = None
+
+    def save_log_error(self):
+        if self.failed_identifiers:
+            with open('failed_identifiers.txt', 'w') as file:
+                file.write(','.join(self.failed_identifiers))
 
     def request_stop(self):
         self.stop_requested = True
@@ -48,6 +54,7 @@ class ParcelDrawer(QObject):
         response = requests.get(url)
         hex_wkb_data = response.text.split('\n')[1]
         if 'błędny format odpowiedzi XML, usługa zwróciła odpowiedź' in hex_wkb_data:
+            self.failed_identifiers.append(identifier)
             raise ValueError(f"Identifier: {identifier} does not exist or there was an error in the response.")
         wkb_data = unhexlify(hex_wkb_data)
         return loads(wkb_data), identifier
@@ -173,6 +180,7 @@ class ParcelDrawerGUI(QWidget):
         super().__init__()
         self.initUI()
         self.stop_requested = False
+        self.ignore_all_errors = False
         # Check system locale and set messages
         # Check the keyboard layout or Windows display language
         try:
@@ -193,26 +201,32 @@ class ParcelDrawerGUI(QWidget):
         self.filepath_display.setText(self.default_file_path)
 
     def show_error_message(self, message):
-        info_text = "Do you want to continue or stop processing?"
-        continue_button = "Continue"
-        if self.language == "pl-PL":
-            info_text = "Czy chcesz kontynuować czy przerwać przetwarzanie?"
-            continue_button = "Kontynuuj"
+        if not self.ignore_all_errors:
+            info_text = "Do you want to continue or stop processing?"
+            continue_button = "Continue"
+            continue_all_button = "Continue for all"
+            if self.language == "pl-PL":
+                info_text = "Czy chcesz kontynuować czy przerwać przetwarzanie?"
+                continue_button = "Kontynuuj"
+                continue_all_button = "Kontynuuj dla wszystkich"
 
-        msgBox = QMessageBox()
-        msgBox.setIcon(QMessageBox.Warning)
-        msgBox.setWindowTitle("Warning")
-        msgBox.setText(message)
-        msgBox.setInformativeText(info_text)
-        continueButton = msgBox.addButton(continue_button, QMessageBox.AcceptRole)
-        stopButton = msgBox.addButton("Stop", QMessageBox.RejectRole)
-        msgBox.setDefaultButton(continueButton)
-        msgBox.exec_()
+            msgBox = QMessageBox()
+            msgBox.setIcon(QMessageBox.Warning)
+            msgBox.setWindowTitle("Warning")
+            msgBox.setText(message)
+            msgBox.setInformativeText(info_text)
+            continueButton = msgBox.addButton(continue_button, QMessageBox.AcceptRole)
+            continueAllButton = msgBox.addButton(continue_all_button, QMessageBox.YesRole)
+            stopButton = msgBox.addButton("Stop", QMessageBox.RejectRole)
+            msgBox.setDefaultButton(continueButton)
+            msgBox.exec_()
 
-        if msgBox.clickedButton() == stopButton:
-            self.drawer.request_stop()
-            self.stop_requested = True
-            self.update_progress_bar(0)
+            if msgBox.clickedButton() == stopButton:
+                self.drawer.request_stop()
+                self.stop_requested = True
+                self.update_progress_bar(0)
+            elif msgBox.clickedButton() == continueAllButton:
+                self.ignore_all_errors = True
 
     def set_polish_language(self):
         self.identifier_label_text = "Wpisz identyfikatory działek (oddzielone przecinkami)\n" \
@@ -396,6 +410,7 @@ class ParcelDrawerGUI(QWidget):
         try:
             if not self.stop_requested:
                 self.drawer.save_dxf()
+                self.drawer.save_log_error()
         except PathNotFoundError as e:
             error_message = str(e)
             if self.language == "pl-PL":
