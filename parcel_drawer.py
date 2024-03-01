@@ -24,6 +24,7 @@ class PathNotFoundError(Exception):
 
 class ParcelDrawer(QObject):
     progress_updated = pyqtSignal(int)
+    error_occurred = pyqtSignal(str)
 
     def __init__(self, identifiers, full_path, draw_as_lines=False, line_color=1, polygon_color=2,
                  identifier_color=3, add_identifier_at_layer=False):
@@ -35,8 +36,12 @@ class ParcelDrawer(QObject):
         self.polygon_color = polygon_color
         self.identifier_color = identifier_color
         self.add_identifier_at_layer = add_identifier_at_layer
+        self.stop_requested = False
         self.doc = None
         self.msp = None
+
+    def request_stop(self):
+        self.stop_requested = True
 
     def fetch_wkb_data(self, identifier):
         url = f"https://uldk.gugik.gov.pl/?request=GetParcelById&id={identifier}"
@@ -86,10 +91,21 @@ class ParcelDrawer(QObject):
         self.msp.add_text(identifier, dxfattribs={'layer': identifier_layer, 'height': 2.5, 'insert': (centroid.x, centroid.y), 'color': self.identifier_color})
 
     def process_parcels(self):
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        with ThreadPoolExecutor(max_workers=5) as executor:
             futures = [executor.submit(self.fetch_wkb_data, identifier) for identifier in self.identifiers]
             for i, future in enumerate(futures):
-                geometry, identifier = future.result()
+                if self.stop_requested:
+                    break
+                try:
+                    geometry, identifier = future.result()
+                    # exterior_coords = list(geometry.exterior.coords)
+                    # first_point = exterior_coords[0]  # This is a tuple (x, y)
+                    #
+                    # x, y = first_point
+                    # print(f"First point's X: {x}, Y: {y}")
+                except ValueError as e:
+                    self.error_occurred.emit(str(e))
+                    continue
                 if self.draw_as_lines_flag:
                     self.draw_lines(geometry, identifier)
                 else:
@@ -128,25 +144,6 @@ def get_windows_display_language():
         return None
 
 
-class ColorItemDelegate(QStyledItemDelegate):
-    def paint(self, painter, option, index):
-        # Call the standard paint method to paint the item text, etc.
-        super().paint(painter, option, index)
-        # Draw the color square
-        color_hex = index.data()
-        color = QColor(color_hex)
-        if color.isValid():
-            painter.save()
-            rect = QRect(option.rect.right() - 30, option.rect.top(), 20, option.rect.height())
-            painter.fillRect(rect, color)
-            painter.restore()
-
-    def sizeHint(self, option, index):
-        # Provide a size hint to ensure there is space for the color square
-        defaultSize = super().sizeHint(option, index)
-        return QSize(defaultSize.width() + 30, defaultSize.height())
-
-
 class ColorComboBox(QComboBox):
     def __init__(self, parent=None):
         super(ColorComboBox, self).__init__(parent)
@@ -175,6 +172,7 @@ class ParcelDrawerGUI(QWidget):
     def __init__(self):
         super().__init__()
         self.initUI()
+        self.stop_requested = False
         # Check system locale and set messages
         # Check the keyboard layout or Windows display language
         try:
@@ -194,6 +192,28 @@ class ParcelDrawerGUI(QWidget):
         self.default_file_path = os.path.join(os.path.expanduser("~\\Desktop"), "parcelDrawer.dxf")
         self.filepath_display.setText(self.default_file_path)
 
+    def show_error_message(self, message):
+        info_text = "Do you want to continue or stop processing?"
+        continue_button = "Continue"
+        if self.language == "pl-PL":
+            info_text = "Czy chcesz kontynuować czy przerwać przetwarzanie?"
+            continue_button = "Kontynuuj"
+
+        msgBox = QMessageBox()
+        msgBox.setIcon(QMessageBox.Warning)
+        msgBox.setWindowTitle("Warning")
+        msgBox.setText(message)
+        msgBox.setInformativeText(info_text)
+        continueButton = msgBox.addButton(continue_button, QMessageBox.AcceptRole)
+        stopButton = msgBox.addButton("Stop", QMessageBox.RejectRole)
+        msgBox.setDefaultButton(continueButton)
+        msgBox.exec_()
+
+        if msgBox.clickedButton() == stopButton:
+            self.drawer.request_stop()
+            self.stop_requested = True
+            self.update_progress_bar(0)
+
     def set_polish_language(self):
         self.identifier_label_text = "Wpisz identyfikatory działek (oddzielone przecinkami)\n" \
                                      "Przykład: 101511_1.0016.164/1,101511_2.0016.164/2"
@@ -204,6 +224,8 @@ class ParcelDrawerGUI(QWidget):
         self.ok_button_text = "Ok"
         self.file_dialog_title = "Wybierz plik DXF"
         self.color_label_id_text = "Wybierz kolor warstwy dla identyfikatoró:"
+        self.identifier_file_button_text = "Albo wybierz Identyfikatory z pliku"
+        self.identifier_file_label_text = "Nie wybrano pliku"
 
         # Set the texts
         self.identifier_label.setText(self.identifier_label_text)
@@ -213,6 +235,8 @@ class ParcelDrawerGUI(QWidget):
         self.color_label.setText(self.color_label_text)
         self.ok_button.setText(self.ok_button_text)
         self.color_label_id.setText(self.color_label_id_text)
+        self.identifier_file_button.setText(self.identifier_file_button_text)
+        self.identifier_file_label.setText(self.identifier_file_label_text)
 
     def initUI(self):
         layout = QVBoxLayout()
@@ -226,6 +250,15 @@ class ParcelDrawerGUI(QWidget):
         self.identifier_input = QLineEdit(self)
         layout.addWidget(self.identifier_label)
         layout.addWidget(self.identifier_input)
+
+        # Identifier File Upload
+        self.identifier_file_button = QPushButton('Or upload Identifier File', self)
+        self.identifier_file_button.clicked.connect(self.upload_identifier_file)
+        layout.addWidget(self.identifier_file_button)
+
+        # Label to display the file path
+        self.identifier_file_label = QLabel("No file selected")
+        layout.addWidget(self.identifier_file_label)
 
         # File Path Selection
         self.filepath_label = QLabel("Select or Enter File Path:")
@@ -307,6 +340,19 @@ class ParcelDrawerGUI(QWidget):
     def update_progress_bar(self, value):
         self.progress_bar.setValue(value)
 
+    def read_identifiers_from_file(self, file_path):
+        with open(file_path, 'r') as file:
+            return file.read().split(',')
+
+    def upload_identifier_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Identifier File", "",
+                                                   "Text Files (*.txt);;All Files (*)")
+        if file_path:
+            self.identifier_file_path = file_path
+            self.identifier_file_label.setText(file_path)
+            identifiers = self.read_identifiers_from_file(file_path)
+            self.identifier_input.setText(','.join(identifiers))
+
     def on_click(self):
         draw_as_lines = False
         color_aci = {
@@ -334,30 +380,22 @@ class ParcelDrawerGUI(QWidget):
         is_polygon = self.polygon_radio.isChecked()
         add_identifier = self.add_identifier_checkbox.isChecked()
         list_of_identifiers = identifiers.split(',')
+        list_of_identifiers = list(filter(None, list_of_identifiers))
 
         if not is_polygon:
             draw_as_lines = True
-        try:
-            self.drawer = ParcelDrawer(list_of_identifiers, file_path, draw_as_lines=draw_as_lines,
-                                  line_color=color_aci[color], polygon_color=color_aci[color],
-                                  identifier_color=color_aci[color_id], add_identifier_at_layer=add_identifier)
-            self.drawer.progress_updated.connect(self.update_progress_bar)
+        self.drawer = ParcelDrawer(list_of_identifiers, file_path, draw_as_lines=draw_as_lines,
+                              line_color=color_aci[color], polygon_color=color_aci[color],
+                              identifier_color=color_aci[color_id], add_identifier_at_layer=add_identifier)
+        self.drawer.error_occurred.connect(self.show_error_message)
+        self.drawer.progress_updated.connect(self.update_progress_bar)
 
-            self.drawer.read_or_create_dxf()
-            self.drawer.process_parcels()
-
-        except ValueError as e:
-            error_message = str(e)
-            if self.language == "pl-PL":
-                identifier = error_message.split()[1]
-                QMessageBox.critical(self, "Error", f"Identifikator: {identifier} nie istnieje,"
-                                                    f" bądź wystąpił bład odpowiedzi serwera.")
-            else:
-                QMessageBox.critical(self, "Error", error_message)
-            return
+        self.drawer.read_or_create_dxf()
+        self.drawer.process_parcels()
 
         try:
-            self.drawer.save_dxf()
+            if not self.stop_requested:
+                self.drawer.save_dxf()
         except PathNotFoundError as e:
             error_message = str(e)
             if self.language == "pl-PL":
@@ -368,11 +406,12 @@ class ParcelDrawerGUI(QWidget):
                 QMessageBox.critical(self, "Error", error_message)
             return
 
-        if self.language == "pl-PL":
-            success_message = "Obramowania działek zostały dodane"
-        else:
-            success_message = "Plot borders have been added"
-        QMessageBox.information(self, "Success", success_message)
+        if not self.stop_requested:
+            if self.language == "pl-PL":
+                success_message = "Obramowania działek zostały dodane"
+            else:
+                success_message = "Plot borders have been added"
+            QMessageBox.information(self, "Success", success_message)
 
 
 if __name__ == "__main__":
