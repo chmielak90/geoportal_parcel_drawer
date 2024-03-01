@@ -319,7 +319,7 @@ class ParcelDrawerGUI(QWidget):
         layout.addWidget(self.ok_button)
 
         # Copyright Label
-        copyright_label = QLabel("Copyright © Michał Chmielewski")
+        copyright_label = QLabel("Copyright © 2024 Michał Chmielewski")
         copyright_label.setAlignment(Qt.AlignRight | Qt.AlignBottom)  # Align to bottom right
 
         # Add a spacer to push the copyright label to the bottom right corner
