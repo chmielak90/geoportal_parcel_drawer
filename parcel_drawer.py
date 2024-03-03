@@ -7,12 +7,49 @@ from ctypes import WinDLL
 
 import ezdxf
 import requests
-from PyQt5.QtCore import QRect, QSize, pyqtSignal, QObject, Qt
+from PyQt5.QtCore import pyqtSignal, QObject, Qt
 from PyQt5.QtGui import QColor, QPixmap, QIcon
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QFileDialog,
                              QRadioButton, QHBoxLayout, QComboBox, QStyledItemDelegate, QCheckBox, QMessageBox,
                              QProgressBar, QSpacerItem, QSizePolicy)
 from shapely.wkb import loads
+from shapely.ops import transform
+from pyproj import Transformer
+
+zone_5_teryts = ['3263', '3207', '3205', '3208', '3209', '3261', '3211', '3204', '3218', '3216', '3201', '3262',
+                 '3214', '3203', '3206', '3212', '3202', '3217', '3210', '0806', '3002', '0801', '0861', '0805',
+                 '0807', '0803', '3014', '3024', '0808', '3015', '0802', '0809', '0862', '3029', '3005', '0811',
+                 '0810', '0804', '0812', '0203', '0225', '0201', '0216', '0211', '0210', '0212', '0226', '0209',
+                 '0262', '0205', '0206', '0261', '0207', '0221', '0265', '0219']
+zone_6_teryts = ['3213', '2212', '2263', '2208', '2215', '2211', '2201', '2205', '2262', '2264', '2261', '2210',
+                 '3215', '2203', '2202', '2206', '2204', '2213', '2214', '2209', '2216', '3031', '0413', '0416',
+                 '0414', '2207', '0406', '0462', '3019', '0410', '0403', '0461', '0404', '0417', '0402', '3001',
+                 '3028', '0419', '0407', '0415', '0463', '0405', '0412', '0408', '0464', '0401', '0411', '0418',
+                 '3016', '3021', '3064', '3003', '0409', '3025', '3030', '3023', '3010', '3062', '3009', '1002',
+                 '3011', '3026', '3006', '3020', '3007', '3027', '1004', '1011', '1020', '3013', '3063', '3004',
+                 '3012', '3017', '3061', '1014', '1019', '1003', '1008', '1061', '0204', '3022', '0213', '0222',
+                 '0220', '0214', '3018', '3008', '1018', '1017', '1001', '1009', '0218', '0264', '0223', '0215',
+                 '1606', '1604', '1608', '2406', '2404', '2464', '0202', '0217', '1601', '1609', '1661', '1611',
+                 '2407', '2409', '0208', '0224', '1607', '1610', '1605', '1603', '1602', '2411', '2415', '2405',
+                 '2466', '2413', '2478', '2462', '2471', '2401', '2465', '2475', '2468', '2470', '1203', '2472',
+                 '2476', '2463', '2474', '2469', '2408', '2477', '2414', '1213', '2402', '2410', '2461', '2403',
+                 '2417', '2467', '2412', '2479', '2473']
+zone_7_teryts = ['2802', '2801', '2808', '2819', '2818', '2804', '2861', '2809', '2806', '2813', '2807', '2815',
+                 '2814', '2862', '2810', '2816', '2805', '2812', '2803', '2811', '2817', '2006', '2004', '1437',
+                 '1413', '1422', '1415', '1461', '2007', '2062', '1427', '1402', '1411', '2014', '1419', '1462',
+                 '1420', '1424', '1435', '1416', '1433', '1429', '1404', '1428', '1414', '1432', '1408', '1465',
+                 '1434', '1412', '1426', '1464', '1005', '1438', '1405', '1421', '1418', '1417', '1021', '1015',
+                 '1063', '1013', '1406', '1403', '0611', '1006', '1016', '1401', '1407', '0616', '1010', '1062',
+                 '1007', '1423', '1425', '1463', '1436', '0614', '1012', '2605', '1430', '2610', '2611', '1409',
+                 '0612', '2613', '2604', '2661', '2607', '2606', '0607', '2416', '2602', '2608', '2601', '2612',
+                 '2609', '1864', '1820', '1818', '0605', '1812', '1212', '1208', '2603', '1204', '1811', '1806',
+                 '1808', '1206', '1214', '1261', '1219', '1201', '1202', '1216', '1263', '1803', '1815', '1816',
+                 '1863', '1810', '1218', '1209', '1207', '1210', '1262', '1205', '1805', '1819', '1807', '1861',
+                 '1802', '1817', '1821', '1215', '1211', '1217']
+zone_8_teryts = ['2012', '2063', '2009', '2001', '2008', '2011', '2002', '2061', '2013', '2003', '2005', '2010',
+                 '1410', '0601', '0661', '0615', '0613', '0619', '0608', '0609', '0663', '0610', '0603', '0662',
+                 '0617', '0606', '0602', '0620', '0664', '0604', '0618', '1809', '1814', '1804', '1813', '1862',
+                 '1801']
 
 
 class PathNotFoundError(Exception):
@@ -22,12 +59,19 @@ class PathNotFoundError(Exception):
         super().__init__(f"{self.message}: '{self.path_error}'")
 
 
+class WrongZoneError(Exception):
+    def __init__(self, identifier, message="Wrong zone"):
+        self.path_error = identifier
+        self.message = message
+        super().__init__(f"Identifier: ${identifier} are from different zone then others.")
+
+
 class ParcelDrawer(QObject):
     progress_updated = pyqtSignal(int)
     error_occurred = pyqtSignal(str)
 
     def __init__(self, identifiers, full_path, draw_as_lines=False, line_color=1, polygon_color=2,
-                 identifier_color=3, add_identifier_at_layer=False):
+                 identifier_color=3, add_identifier_at_layer=False, make_transformation_to_puwg_2000=False):
         super().__init__()
         self.identifiers = identifiers
         self.full_path = full_path
@@ -38,6 +82,12 @@ class ParcelDrawer(QObject):
         self.add_identifier_at_layer = add_identifier_at_layer
         self.stop_requested = False
         self.failed_identifiers = []
+        self.make_transformation_to_puwg_2000 = make_transformation_to_puwg_2000
+        if make_transformation_to_puwg_2000:
+            self.identifier_height = 10
+        else:
+            self.identifier_height = 2.5
+        self.set_zone = None
         self.doc = None
         self.msp = None
 
@@ -79,7 +129,7 @@ class ParcelDrawer(QObject):
             short_id = identifier.split(".")[-1]
             self.add_identifier(geometry, short_id)
 
-    def draw_lines(self, geometry, identifier):  # Renamed method
+    def draw_lines(self, geometry, identifier):
         layer_name = 'plot_as_lines'
         self.ensure_layer(layer_name, self.line_color)
         coords = list(geometry.exterior.coords)
@@ -95,7 +145,8 @@ class ParcelDrawer(QObject):
         identifier_layer = 'identifier_layer'
         self.ensure_layer(identifier_layer, self.identifier_color)
         centroid = geometry.centroid
-        self.msp.add_text(identifier, dxfattribs={'layer': identifier_layer, 'height': 2.5, 'insert': (centroid.x, centroid.y), 'color': self.identifier_color})
+        self.msp.add_text(identifier, dxfattribs={'layer': identifier_layer, 'height': self.identifier_height,
+                                                  'insert': (centroid.x, centroid.y), 'color': self.identifier_color})
 
     def process_parcels(self):
         with ThreadPoolExecutor(max_workers=5) as executor:
@@ -105,6 +156,8 @@ class ParcelDrawer(QObject):
                     break
                 try:
                     geometry, identifier = future.result()
+                    target_crs = self.determine_zone(identifier)
+
                     # exterior_coords = list(geometry.exterior.coords)
                     # first_point = exterior_coords[0]  # This is a tuple (x, y)
                     #
@@ -113,13 +166,24 @@ class ParcelDrawer(QObject):
                 except ValueError as e:
                     self.error_occurred.emit(str(e))
                     continue
-                if self.draw_as_lines_flag:
-                    self.draw_lines(geometry, identifier)
-                else:
-                    self.draw_as_polygon(geometry, identifier)
 
-                progress = (i + 1) / len(self.identifiers) * 100
-                self.progress_updated.emit(progress)
+                # Check if zone are same for each identifier
+                if self.set_zone:
+                    if target_crs == self.set_zone:
+                        if self.make_transformation_to_puwg_2000:
+                            geometry = self.transform_to_puwg_2000(geometry, target_crs)
+
+                        if self.draw_as_lines_flag:
+                            self.draw_lines(geometry, identifier)
+                        else:
+                            self.draw_as_polygon(geometry, identifier)
+
+                        progress = (i + 1) / len(self.identifiers) * 100
+                        self.progress_updated.emit(progress)
+                    else:
+                        raise WrongZoneError(identifier)
+                else:
+                    self.set_zone = target_crs
 
     def save_dxf(self):
         directory, filename = os.path.split(self.full_path)
@@ -127,6 +191,29 @@ class ParcelDrawer(QObject):
             self.doc.saveas(self.full_path)
         except FileNotFoundError:
             raise PathNotFoundError(directory)
+
+    @staticmethod
+    def determine_zone(identifier):
+        starting_sequence = identifier[:4]
+        if starting_sequence in zone_5_teryts:
+            return 'EPSG:2176'
+        elif starting_sequence in zone_6_teryts:
+            return 'EPSG:2177'
+        elif starting_sequence in zone_7_teryts:
+            return 'EPSG:2178'
+        elif starting_sequence in zone_8_teryts:
+            return 'EPSG:2179'
+
+    @staticmethod
+    def transform_to_puwg_2000(geometry, target_crs):
+        # Define source CRS
+        source_crs = 'EPSG:2180'  # PUWG 1992
+
+        # Create a transformer object for the CRS transformation
+        transformer = Transformer.from_crs(source_crs, target_crs, always_xy=True)
+
+        # Perform the transformation and return
+        return transform(transformer.transform, geometry)
 
 
 # Helper function to get the keyboard layout
@@ -237,9 +324,11 @@ class ParcelDrawerGUI(QWidget):
         self.color_label_text = "Wybierz kolor warstwy dla obrysu działek:"
         self.ok_button_text = "Ok"
         self.file_dialog_title = "Wybierz plik DXF"
-        self.color_label_id_text = "Wybierz kolor warstwy dla identyfikatoró:"
+        self.color_label_id_text = "Wybierz kolor warstwy dla identyfikatorów:"
         self.identifier_file_button_text = "Albo wybierz Identyfikatory z pliku"
         self.identifier_file_label_text = "Nie wybrano pliku"
+        self.puwg_transformation_checkbox_text = "Czy chcesz dokonać transformacji układu" \
+                                                 " współrzędnych PUWG 1992 do PUWG 2000?"
 
         # Set the texts
         self.identifier_label.setText(self.identifier_label_text)
@@ -251,6 +340,7 @@ class ParcelDrawerGUI(QWidget):
         self.color_label_id.setText(self.color_label_id_text)
         self.identifier_file_button.setText(self.identifier_file_button_text)
         self.identifier_file_label.setText(self.identifier_file_label_text)
+        self.puwg_transformation_checkbox.setText(self.puwg_transformation_checkbox_text)
 
     def initUI(self):
         layout = QVBoxLayout()
@@ -273,6 +363,11 @@ class ParcelDrawerGUI(QWidget):
         # Label to display the file path
         self.identifier_file_label = QLabel("No file selected")
         layout.addWidget(self.identifier_file_label)
+
+        # Transform coordinate system PUWG 1992 to PUWG 2000
+        self.puwg_transformation_checkbox = QCheckBox("Do you want to transform coordinate"
+                                                      " system PUWG 1992 to PUWG 2000?")
+        layout.addWidget(self.puwg_transformation_checkbox)
 
         # File Path Selection
         self.filepath_label = QLabel("Select or Enter File Path:")
@@ -389,23 +484,50 @@ class ParcelDrawerGUI(QWidget):
                 QMessageBox.warning(self, "Warning", "Please enter both identifiers and a file path.")
             return
 
+        directory, filename = os.path.split(file_path)
+        if not os.path.isdir(directory):
+            if self.language == "pl-PL":
+                QMessageBox.critical(self, "Warning", f"Podana ścieżka nie istnieje: {directory}")
+            else:
+                QMessageBox.critical(self, "Warning", f"The path not found: {directory}")
+            return
+
         color = self.color_combo.currentText()
         color_id = self.color_combo_id.currentText()
         is_polygon = self.polygon_radio.isChecked()
         add_identifier = self.add_identifier_checkbox.isChecked()
         list_of_identifiers = identifiers.split(',')
         list_of_identifiers = list(filter(None, list_of_identifiers))
+        puwg_transformation = self.puwg_transformation_checkbox.isChecked()
 
         if not is_polygon:
             draw_as_lines = True
         self.drawer = ParcelDrawer(list_of_identifiers, file_path, draw_as_lines=draw_as_lines,
-                              line_color=color_aci[color], polygon_color=color_aci[color],
-                              identifier_color=color_aci[color_id], add_identifier_at_layer=add_identifier)
+                                   line_color=color_aci[color], polygon_color=color_aci[color],
+                                   identifier_color=color_aci[color_id], add_identifier_at_layer=add_identifier,
+                                   make_transformation_to_puwg_2000=puwg_transformation)
         self.drawer.error_occurred.connect(self.show_error_message)
         self.drawer.progress_updated.connect(self.update_progress_bar)
 
         self.drawer.read_or_create_dxf()
-        self.drawer.process_parcels()
+        try:
+            self.drawer.process_parcels()
+        except ConnectionError:
+            if self.language == "pl-PL":
+                QMessageBox.critical(self, "Error", f"Problem z połączeniem do serwera. Spróbuj później.")
+            else:
+                QMessageBox.critical(self, "Error",
+                                     "There is a connection issue to the server. Please try again later.")
+            self.update_progress_bar(0)
+            return
+
+        except WrongZoneError:
+            if self.language == "pl-PL":
+                QMessageBox.critical(self, "Error", f"Twoje identyfikatory nie pochodzą z jednej strefy.")
+            else:
+                QMessageBox.critical(self, "Error", f"Your identifiers are from different zones.")
+            self.update_progress_bar(0)
+            return
 
         try:
             if not self.stop_requested:
@@ -413,12 +535,12 @@ class ParcelDrawerGUI(QWidget):
                 self.drawer.save_log_error()
         except PathNotFoundError as e:
             error_message = str(e)
+            path_error = error_message.split(": ")[1]
             if self.language == "pl-PL":
-                path_error = error_message.split(": ")[1]
-                QMessageBox.critical(self, "Error",
-                                     f"Podana ścieżka nie istnieje: {path_error}")
+                QMessageBox.critical(self, "Error", f"Podana ścieżka nie istnieje: {path_error}, spróbuj ponownie")
             else:
-                QMessageBox.critical(self, "Error", error_message)
+                QMessageBox.critical(self, "Error", f"The path not found: {path_error}, please try again")
+            self.update_progress_bar(0)
             return
 
         if not self.stop_requested:
