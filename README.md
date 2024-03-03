@@ -10,14 +10,16 @@ The Parcel Drawer application is a PyQt5-based tool for processing and visualizi
 - Customizable color settings for lines and polygons.
 - Progress bar indicating the process completion status.
 - Supports English and Polish languages based on system settings.
+- Option to convert coordinate system from PUWG 1992 to PUWG 2000 with auto-detection of zone
 
 ## Usage
-1. Enter parcel identifiers separated by commas in the input field.
-2. Choose the file path to save the DXF file.
-3. Select the drawing option: Polygon or Lines.
-4. Choose whether to add identifiers to the parcels.
-5. Select the color for the layer.
-6. Click 'Ok' to start processing and generating the DXF file.
+1. Enter parcel identifiers separated by commas in the input field or load from file.
+2. (Optional) convert coordinate system from PUWG 1992 to PUWG 2000
+3. Choose the file path to save the DXF file.
+4. Select the drawing option: Polygon or Lines.
+5. Choose whether to add identifiers to the parcels.
+6. Select the color for the layer.
+7. Click 'Ok' to start processing and generating the DXF file.
 
 ## Requirements
 - Python 3
@@ -43,14 +45,16 @@ Aplikacja Parcel Drawer to narzędzie oparte na PyQt5 do przetwarzania i wizuali
 - Możliwość dostosowania ustawień kolorów dla linii i poligonów.
 - Pasek postępu wskazujący status ukończenia procesu.
 - Wsparcie języków angielskiego i polskiego w zależności od ustawień systemowych.
+- Opcjonalnie, możliwość konwersji układu PUWG 1992 do PUWG 2000 z automatyczną detekcją odpowiedniej strefy
 
 ## Użycie
 1. Wprowadź identyfikatory działek oddzielone przecinkami w polu wejściowym.
-2. Wybierz ścieżkę do zapisania pliku DXF.
-3. Wybierz opcję rysowania: Poligon lub Linie.
-4. Wybierz, czy dodać identyfikatory do działek.
-5. Wybierz kolor warstwy.
-6. Kliknij 'Ok', aby rozpocząć przetwarzanie i generowanie pliku DXF.
+2. (Opcjonalnie) Zaznacz konwersję do układu PUWG 2000
+3. Wybierz ścieżkę do zapisania pliku DXF.
+4. Wybierz opcję rysowania: Poligon lub Linie.
+5. Wybierz, czy dodać identyfikatory do działek.
+6. Wybierz kolor warstwy.
+7. Kliknij 'Ok', aby rozpocząć przetwarzanie i generowanie pliku DXF.
 
 ## Wymagania
 - Python 3
