@@ -237,7 +237,7 @@ class ParcelDrawerGUI(QWidget):
 
         self.setLayout(layout)
         self.setWindowTitle('Parcel Drawer')
-        self.setMinimumWidth(400)  # Adjust the width of the window
+        self.setMinimumWidth(420)  # Adjust the width of the window
 
     def toggle_identifier_options(self, state):
         if state == Qt.Checked:
