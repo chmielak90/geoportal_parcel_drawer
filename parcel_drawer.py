@@ -6,11 +6,12 @@ from concurrent.futures import ThreadPoolExecutor
 import ezdxf
 import requests
 from PyQt5.QtCore import pyqtSignal, QObject
-from shapely.wkb import loads
-from shapely.ops import transform
 from pyproj import Transformer
+from requests.exceptions import ConnectionError, RequestException
+from shapely.ops import transform
+from shapely.wkb import loads
 
-from errors import WrongZoneError, PathNotFoundError
+from errors import WrongZoneError, PathNotFoundError, ServerConnectionError
 
 zone_5_teryts = ['3263', '3207', '3205', '3208', '3209', '3261', '3211', '3204', '3218', '3216', '3201', '3262',
                  '3214', '3203', '3206', '3212', '3202', '3217', '3210', '0806', '3002', '0801', '0861', '0805',
@@ -53,7 +54,8 @@ class ParcelDrawer(QObject):
     error_occurred = pyqtSignal(str)
 
     def __init__(self, identifiers, full_path, draw_as_lines=False, line_color=1, polygon_color=2,
-                 identifier_color=3, add_identifier_at_layer=False, make_transformation_to_puwg_2000=False):
+                 identifier_color=3, add_identifier_at_layer=False, identifier_height=2.5,
+                 make_transformation_to_puwg_2000=False):
         super().__init__()
         self.identifiers = identifiers
         self.full_path = full_path
@@ -65,10 +67,7 @@ class ParcelDrawer(QObject):
         self.stop_requested = False
         self.failed_identifiers = []
         self.make_transformation_to_puwg_2000 = make_transformation_to_puwg_2000
-        if make_transformation_to_puwg_2000:
-            self.identifier_height = 10
-        else:
-            self.identifier_height = 2.5
+        self.identifier_height = identifier_height
         self.set_zone = None
         self.doc = None
         self.msp = None
@@ -83,11 +82,19 @@ class ParcelDrawer(QObject):
 
     def fetch_wkb_data(self, identifier):
         url = f"https://uldk.gugik.gov.pl/?request=GetParcelById&id={identifier}"
-        response = requests.get(url)
-        hex_wkb_data = response.text.split('\n')[1]
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            hex_wkb_data = response.text.split('\n')[1]
+        except ConnectionError as e:  # Catch connection-related errors
+            raise ServerConnectionError("Connection error") from e
+        except RequestException as e:  # Catch other requests-related errors
+            raise ServerConnectionError("An error occurred while handling your request.") from e
+
         if 'błędny format odpowiedzi XML, usługa zwróciła odpowiedź' in hex_wkb_data:
             self.failed_identifiers.append(identifier)
             raise ValueError(f"Identifier: {identifier} does not exist or there was an error in the response.")
+
         wkb_data = unhexlify(hex_wkb_data)
         return loads(wkb_data), identifier
 

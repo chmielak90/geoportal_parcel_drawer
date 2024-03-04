@@ -10,3 +10,9 @@ class WrongZoneError(Exception):
         self.path_error = identifier
         self.message = message
         super().__init__(f"Identifier: ${identifier} are from different zone then others.")
+
+
+class ServerConnectionError(Exception):
+    def __init__(self, message="Connection error"):
+        self.message = message
+        super().__init__(f"Connection error")

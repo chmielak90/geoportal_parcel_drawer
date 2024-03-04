@@ -4,12 +4,11 @@ from ctypes import WinDLL
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap, QColor, QIcon
-
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QFileDialog,
                              QRadioButton, QHBoxLayout, QCheckBox, QMessageBox,
-                             QProgressBar, QSpacerItem, QSizePolicy, QComboBox)
+                             QProgressBar, QSpacerItem, QSizePolicy, QComboBox, QDoubleSpinBox)
 
-from errors import WrongZoneError, PathNotFoundError
+from errors import WrongZoneError, PathNotFoundError, ServerConnectionError
 from parcel_drawer import ParcelDrawer
 
 
@@ -126,6 +125,7 @@ class ParcelDrawerGUI(QWidget):
         self.identifier_file_label_text = "Nie wybrano pliku"
         self.puwg_transformation_checkbox_text = "Czy chcesz dokonać transformacji układu" \
                                                  " współrzędnych PUWG 1992 do PUWG 2000?"
+        self.spin_box_label_text = "Wysokość tekstu dla Identyfikatorów"
 
         # Set the texts
         self.identifier_label.setText(self.identifier_label_text)
@@ -138,6 +138,7 @@ class ParcelDrawerGUI(QWidget):
         self.identifier_file_button.setText(self.identifier_file_button_text)
         self.identifier_file_label.setText(self.identifier_file_label_text)
         self.puwg_transformation_checkbox.setText(self.puwg_transformation_checkbox_text)
+        self.spin_box_label.setText(self.spin_box_label_text)
 
     def initUI(self):
         layout = QVBoxLayout()
@@ -196,6 +197,7 @@ class ParcelDrawerGUI(QWidget):
 
         # Add a checkbox for adding an identifier
         self.add_identifier_checkbox = QCheckBox("Do you want to add an identifier?")
+        self.add_identifier_checkbox.stateChanged.connect(self.toggle_identifier_options)
         layout.addWidget(self.add_identifier_checkbox)
 
         # Color Selection
@@ -204,6 +206,19 @@ class ParcelDrawerGUI(QWidget):
         self.color_combo_id.currentIndexChanged.connect(self.on_color_combo_changed)  # Connect the change event
         layout.addWidget(self.color_label_id)
         layout.addWidget(self.color_combo_id)
+        self.color_label_id.hide()  # Initially hide the label
+        self.color_combo_id.hide()  # Initially hide the combo box
+
+        # Create a label for height of text
+        self.spin_box_label = QLabel("Identifier text height", self)
+        layout.addWidget(self.spin_box_label)
+
+        # Create the QDoubleSpinBox for displaying and inputting the value
+        self.spin_box = QDoubleSpinBox(self)
+        self.spin_box.setValue(8.0)  # Set the initial value
+        self.spin_box.setSingleStep(0.5)  # Set the step value
+        layout.addWidget(self.spin_box)
+        self.spin_box.hide()  # Initially hide the spin box
 
         # OK Button
         self.ok_button = QPushButton('Ok', self)
@@ -223,6 +238,20 @@ class ParcelDrawerGUI(QWidget):
         self.setLayout(layout)
         self.setWindowTitle('Parcel Drawer')
         self.setMinimumWidth(400)  # Adjust the width of the window
+
+    def toggle_identifier_options(self, state):
+        if state == Qt.Checked:
+            # Show the widgets
+            self.color_label_id.show()
+            self.color_combo_id.show()
+            self.spin_box_label.show()
+            self.spin_box.show()
+        else:
+            # Hide the widgets
+            self.color_label_id.hide()
+            self.color_combo_id.hide()
+            self.spin_box_label.hide()
+            self.spin_box.hide()
 
     def open_file_dialog(self):
         options = QFileDialog.Options()
@@ -292,12 +321,14 @@ class ParcelDrawerGUI(QWidget):
         list_of_identifiers = identifiers.split(',')
         list_of_identifiers = list(filter(None, list_of_identifiers))
         puwg_transformation = self.puwg_transformation_checkbox.isChecked()
+        height_identifier_text = float(self.spin_box.cleanText())
 
         if not is_polygon:
             draw_as_lines = True
         self.drawer = ParcelDrawer(list_of_identifiers, file_path, draw_as_lines=draw_as_lines,
                                    line_color=color_aci[color], polygon_color=color_aci[color],
                                    identifier_color=color_aci[color_id], add_identifier_at_layer=add_identifier,
+                                   identifier_height=height_identifier_text,
                                    make_transformation_to_puwg_2000=puwg_transformation)
         self.drawer.error_occurred.connect(self.show_error_message)
         self.drawer.progress_updated.connect(self.update_progress_bar)
@@ -305,7 +336,7 @@ class ParcelDrawerGUI(QWidget):
         self.drawer.read_or_create_dxf()
         try:
             self.drawer.process_parcels()
-        except ConnectionError:
+        except ServerConnectionError:
             if self.language == "pl-PL":
                 QMessageBox.critical(self, "Error", f"Problem z połączeniem do serwera. Spróbuj później.")
             else:
