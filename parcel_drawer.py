@@ -146,33 +146,29 @@ class ParcelDrawer(QObject):
                 try:
                     geometry, identifier = future.result()
                     target_crs = self.determine_zone(identifier)
-
-                    # exterior_coords = list(geometry.exterior.coords)
-                    # first_point = exterior_coords[0]  # This is a tuple (x, y)
-                    #
-                    # x, y = first_point
-                    # print(f"First point's X: {x}, Y: {y}")
                 except ValueError as e:
                     self.error_occurred.emit(str(e))
                     continue
-
                 # Check if zone are same for each identifier
                 if self.set_zone:
                     if target_crs == self.set_zone:
                         if self.make_transformation_to_puwg_2000:
                             geometry = self.transform_to_puwg_2000(geometry, target_crs)
-
-                        if self.draw_as_lines_flag:
-                            self.draw_lines(geometry, identifier)
-                        else:
-                            self.draw_as_polygon(geometry, identifier)
-
-                        progress = (i + 1) / len(self.identifiers) * 100
-                        self.progress_updated.emit(progress)
                     else:
                         raise WrongZoneError(identifier)
                 else:
                     self.set_zone = target_crs
+
+                    if self.make_transformation_to_puwg_2000:
+                        geometry = self.transform_to_puwg_2000(geometry, target_crs)
+
+                if self.draw_as_lines_flag:
+                    self.draw_lines(geometry, identifier)
+                else:
+                    self.draw_as_polygon(geometry, identifier)
+
+                progress = (i + 1) / len(self.identifiers) * 100
+                self.progress_updated.emit(progress)
 
     def save_dxf(self):
         directory, filename = os.path.split(self.full_path)
